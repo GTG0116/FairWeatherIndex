@@ -1,1 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fair Weather Index</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #0b1622;
+      color: #d0dce8;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #0f2234 0%, #1a3050 100%);
+      border-bottom: 2px solid #1e4068;
+      padding: 18px 28px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .logo-icon { font-size: 2rem; line-height: 1; }
+    .logo-text { font-size: 1.55rem; font-weight: 800; color: #64b5f6; letter-spacing: 0.5px; }
+    .logo-sub  { font-size: 0.78rem; color: #5580a0; margin-top: 2px; }
+
+    /* ── Search ── */
+    .search-section {
+      padding: 22px 28px 18px;
+      background: #0e1d2e;
+      border-bottom: 1px solid #182d45;
+    }
+    .search-row { display: flex; gap: 10px; max-width: 620px; }
+    .search-input {
+      flex: 1;
+      padding: 11px 16px;
+      background: #152537;
+      border: 1px solid #1e3d5e;
+      border-radius: 7px;
+      color: #d0dce8;
+      font-size: 0.97rem;
+      transition: border-color 0.2s;
+    }
+    .search-input:focus { outline: none; border-color: #64b5f6; }
+    .search-input::placeholder { color: #3a5470; }
+    .btn {
+      padding: 11px 22px;
+      background: #1565c0;
+      border: none;
+      border-radius: 7px;
+      color: #e8f0fe;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .btn:hover:not(:disabled)  { background: #1976d2; transform: translateY(-1px); }
+    .btn:active:not(:disabled) { transform: translateY(0); }
+    .btn:disabled { background: #1e3d5e; cursor: not-allowed; opacity: 0.7; }
+    .status { margin-top: 10px; font-size: 0.82rem; color: #5580a0; min-height: 18px; }
+    .status.error { color: #ef5350; }
+    .status.info  { color: #81c784; }
+
+    /* ── Chart area ── */
+    .chart-section { padding: 22px 28px; }
+    .chart-header { margin-bottom: 14px; }
+    .chart-title { font-size: 1.1rem; font-weight: 700; color: #90caf9; }
+    .chart-meta  { font-size: 0.75rem; color: #3a5470; margin-top: 4px; }
+
+    .chart-wrapper {
+      overflow-x: auto;
+      border: 1px solid #182d45;
+      border-radius: 8px;
+      background: #0b1622;
+    }
+
+    table.fwi-table {
+      border-collapse: collapse;
+      font-size: 0.68rem;
+      white-space: nowrap;
+    }
+    table.fwi-table th,
+    table.fwi-table td {
+      padding: 0;
+      border: 1px solid #0b1622;
+    }
+
+    /* sticky left label column */
+    .row-label {
+      padding: 5px 10px;
+      background: #10203a !important;
+      color: #7eb3d9;
+      font-weight: 700;
+      font-size: 0.70rem;
+      min-width: 110px;
+      width: 110px;
+      position: sticky;
+      left: 0;
+      z-index: 5;
+      border-right: 2px solid #1e4068 !important;
+    }
+
+    /* Date/hour headers */
+    .date-hdr {
+      background: #091522;
+      color: #64b5f6;
+      font-weight: 800;
+      font-size: 0.69rem;
+      text-align: center;
+      padding: 5px 4px;
+      border-bottom: 1px solid #1e4068 !important;
+    }
+    .hour-hdr {
+      background: #0e1d2e;
+      color: #3a5878;
+      font-size: 0.63rem;
+      text-align: center;
+      padding: 3px 2px;
+      min-width: 38px;
+      width: 38px;
+    }
+    .hour-hdr.night { color: #2a4060; }
+
+    /* Data cells */
+    .cell {
+      text-align: center;
+      min-width: 38px;
+      width: 38px;
+      height: 26px;
+      font-size: 0.63rem;
+      font-weight: 600;
+      color: #111;
+      vertical-align: middle;
+      cursor: default;
+      transition: filter 0.1s;
+    }
+    .cell:hover { filter: brightness(1.2); }
+    .cell.lt { color: rgba(255,255,255,0.88); }
+    .cell.fwi-cell { height: 34px; font-size: 0.71rem; font-weight: 800; }
+
+    /* Score color palette */
+    .s5 { background: #1b5e20; } /* Excellent   – deep forest green */
+    .s4 { background: #4caf50; } /* Good        – mid green        */
+    .s3 { background: #455a64; } /* Average     – blue-slate       */
+    .s2 { background: #f9a825; } /* Somewhat OK – amber            */
+    .s1 { background: #e53935; } /* Poor        – red              */
+    .s0 { background: #6a1b9a; } /* Ext. Poor   – purple           */
+    .sn { background: #0d1f31; color: #2a4a6a !important; } /* no data */
+
+    /* ── Legend ── */
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      margin-top: 16px;
+      align-items: center;
+    }
+    .legend-ttl { font-size: 0.78rem; color: #3a5878; font-weight: 600; }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: #8aaccc; }
+    .l-swatch { width: 22px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+
+    /* ── Methodology ── */
+    .method-box {
+      margin-top: 22px;
+      padding: 16px 20px;
+      background: #0e1d2e;
+      border-radius: 8px;
+      border: 1px solid #182d45;
+      font-size: 0.78rem;
+      color: #5580a0;
+      line-height: 1.7;
+    }
+    .method-box h3 { color: #90caf9; font-size: 0.88rem; margin-bottom: 10px; }
+    .method-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 8px 20px;
+    }
+    .method-item strong { color: #7eb3d9; }
+
+    /* ── Loading overlay ── */
+    .overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(11, 22, 34, 0.85);
+      z-index: 200;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+    }
+    .overlay.on { display: flex; }
+    .spinner {
+      width: 52px; height: 52px;
+      border: 4px solid #1e3d5e;
+      border-top-color: #64b5f6;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .overlay-txt { color: #90caf9; font-size: 0.95rem; font-weight: 600; }
+
+    /* ── Tooltip ── */
+    .tip {
+      position: fixed;
+      background: #0e1d2e;
+      border: 1px solid #1e4068;
+      border-radius: 7px;
+      padding: 10px 14px;
+      font-size: 0.75rem;
+      color: #d0dce8;
+      pointer-events: none;
+      z-index: 300;
+      max-width: 220px;
+      display: none;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+      line-height: 1.7;
+    }
+    .tip-title { font-weight: 700; color: #64b5f6; margin-bottom: 6px; font-size: 0.78rem; }
+    .tip-row   { display: flex; justify-content: space-between; gap: 14px; }
+    .tip-lbl   { color: #5580a0; }
+    .tip-val   { font-weight: 600; }
+
+    @media (max-width: 600px) {
+      header       { padding: 14px 16px; }
+      .search-section { padding: 16px 16px 14px; }
+      .chart-section  { padding: 16px 12px; }
+      .row-label { min-width: 88px; width: 88px; font-size: 0.63rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div class="overlay" id="overlay">
+  <div class="spinner"></div>
+  <div class="overlay-txt" id="overlayTxt">Fetching data…</div>
+</div>
+
+<!-- Tooltip -->
+<div class="tip" id="tip"></div>
+
+<!-- Header -->
+<header>
+  <div class="logo-icon">☀</div>
+  <div>
+    <div class="logo-text">Fair Weather Index</div>
+    <div class="logo-sub">NWS NDFD-powered outdoor comfort forecast</div>
+  </div>
+</header>
+
+<!-- Search -->
+<div class="search-section">
+  <div class="search-row">
+    <input type="text" class="search-input" id="locInput"
+           placeholder="Enter city & state or ZIP (e.g. Nashville, TN or 90210)" />
+    <button class="btn" id="goBtn" onclick="run()">Get Forecast</button>
+  </div>
+  <div class="status" id="status"></div>
+</div>
+
+<!-- Chart -->
+<div class="chart-section" id="chartSection" style="display:none">
+  <div class="chart-header">
+    <div class="chart-title" id="chartTitle"></div>
+    <div class="chart-meta"  id="chartMeta"></div>
+  </div>
+  <div class="chart-wrapper">
+    <table class="fwi-table" id="fwiTable"></table>
+  </div>
+
+  <div class="legend">
+    <span class="legend-ttl">Fair Weather Index &rarr;</span>
+    <div class="legend-item"><div class="l-swatch s5"></div>Excellent</div>
+    <div class="legend-item"><div class="l-swatch s4"></div>Good</div>
+    <div class="legend-item"><div class="l-swatch s3"></div>Average</div>
+    <div class="legend-item"><div class="l-swatch s2"></div>Somewhat OK</div>
+    <div class="legend-item"><div class="l-swatch s1"></div>Poor</div>
+    <div class="legend-item"><div class="l-swatch s0"></div>Extremely Poor</div>
+  </div>
+
+  <div class="method-box">
+    <h3>Scoring Methodology</h3>
+    <div class="method-grid">
+      <div class="method-item"><strong>Feels Like &amp; Temperature (30% + 10%)</strong><br>
+        Scored relative to seasonal normals for the location. "Average" = near-normal for the time
+        of year. Deviating <em>toward</em> the comfort zone (cooler in summer, warmer in winter)
+        scores higher; deviating away scores lower.</div>
+      <div class="method-item"><strong>Precipitation Chance (25%)</strong><br>
+        &lt;10% Excellent · 10–20% Good · 20–40% Average · 40–60% Somewhat OK · 60–80% Poor · &gt;80% Extremely Poor</div>
+      <div class="method-item"><strong>Wind Speed (15%)</strong><br>
+        &lt;5 mph Excellent · 5–10 Good · 10–20 Average · 20–30 Somewhat OK · 30–40 Poor · &gt;40 Extremely Poor</div>
+      <div class="method-item"><strong>Relative Humidity (10%)</strong><br>
+        35–55% Excellent · 55–65% Good · 65–75% Average · 75–85% Somewhat OK · 85–93% Poor · &gt;93% Extremely Poor</div>
+      <div class="method-item"><strong>Cloud Cover (10%)</strong><br>
+        &lt;15% Excellent · 15–30% Good · 30–55% Average · 55–75% Somewhat OK · 75–90% Poor · &gt;90% Extremely Poor</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===================================================================
+// CONSTANTS
+// ===================================================================
+const W = { feelsLike:.30, temperature:.10, precip:.25, wind:.15, humidity:.10, cloud:.10 };
+
+// Unit converters
+const cToF  = c => c * 9/5 + 32;
+const kmToM = k => k * 0.621371;
+const msToM = s => s * 2.23694;
+
+// ===================================================================
+// SCORING — year-round fixed thresholds
+// ===================================================================
+function scoreWind(mph) {
+  if (mph <  5) return 5;
+  if (mph < 10) return 4;
+  if (mph < 20) return 3;
+  if (mph < 30) return 2;
+  if (mph < 40) return 1;
+  return 0;
+}
+
+function scoreHumidity(rh) {
+  if (rh < 35) return 4; // slightly dry but fine
+  if (rh < 55) return 5;
+  if (rh < 65) return 4;
+  if (rh < 75) return 3;
+  if (rh < 85) return 2;
+  if (rh < 93) return 1;
+  return 0;
+}
+
+function scoreCloud(pct) {
+  if (pct < 15) return 5;
+  if (pct < 30) return 4;
+  if (pct < 55) return 3;
+  if (pct < 75) return 2;
+  if (pct < 90) return 1;
+  return 0;
+}
+
+function scorePrecip(prob) {
+  if (prob < 10) return 5;
+  if (prob < 20) return 4;
+  if (prob < 40) return 3;
+  if (prob < 60) return 2;
+  if (prob < 80) return 1;
+  return 0;
+}
+
+// ===================================================================
+// SEASONAL NORMAL — sinusoidal approximation for CONUS
+// Returns approximate daily mean temperature in °F for a given
+// latitude and date.
+// ===================================================================
+function seasonalNormal(lat, date) {
+  const clat = Math.max(24, Math.min(50, lat));
+  const off  = clat - 24;            // 0–26
+  const Tmean = 76.5 - 1.25 * off;  // 76.5°F @ 24°N → 44°F @ 50°N
+  const Tamp  = 13   + 0.60 * off;  // 13°F @ 24°N  → 28.6°F @ 50°N
+  const doy   = Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 86400000);
+  // peak ~ Jul 15 (doy ≈ 196)
+  return Tmean + Tamp * Math.cos(2 * Math.PI * (doy - 196) / 365);
+}
+
+// Score temperature/feels-like relative to seasonal normal
+function scoreTemp(T_F, Tnorm_F) {
+  // Hard absolute caps
+  if (T_F > 118 || T_F < -10) return 0;
+  if (T_F > 110 || T_F <   5) return 1;
+
+  const dev      = T_F - Tnorm_F;   // + means warmer than normal
+  const absdev   = Math.abs(dev);
+  const comfort  = 73;               // ideal feels-like °F
+  const n2c      = comfort - Tnorm_F; // direction from normal → comfort
+
+  // Near-normal: always "average"
+  if (absdev <= 5) return 3;
+
+  // Spring/fall: normal is already near comfort zone
+  if (Math.abs(n2c) < 8) {
+    if (absdev <= 12) return 2;
+    if (absdev <= 22) return 1;
+    return 0;
+  }
+
+  const toward = Math.sign(dev) === Math.sign(n2c);
+  if (toward) {
+    if (absdev <= 13) return 4; // Good
+    if (absdev <= 24) return 5; // Excellent — significantly more comfortable
+    return 4;                   // Very far even in good direction
+  } else {
+    if (absdev <= 10) return 2;
+    if (absdev <= 20) return 1;
+    return 0;
+  }
+}
+
+// Composite FWI (weighted average of valid scores)
+function calcFWI(sc) {
+  let num = 0, den = 0;
+  for (const [k, w] of Object.entries(W)) {
+    if (sc[k] != null) { num += w * sc[k]; den += w; }
+  }
+  return den > 0 ? num / den : null;
+}
+
+function fwiCat(v) {
+  if (v == null)  return { cls:'sn lt', lbl:'—' };
+  if (v >= 4.5)   return { cls:'s5 lt', lbl:'Excellent' };
+  if (v >= 3.5)   return { cls:'s4 lt', lbl:'Good' };
+  if (v >= 2.5)   return { cls:'s3 lt', lbl:'Average' };
+  if (v >= 1.5)   return { cls:'s2',    lbl:'Somewhat OK' };
+  if (v >= 0.5)   return { cls:'s1 lt', lbl:'Poor' };
+  return               { cls:'s0 lt', lbl:'Ext. Poor' };
+}
+
+function scoreCls(s) {
+  if (s == null) return 'sn lt';
+  const lt = (s === 5 || s <= 1);
+  return `s${s}${lt ? ' lt' : ''}`;
+}
+
+// ===================================================================
+// NWS DATA PARSING
+// ===================================================================
+function parseDurHrs(dur) {
+  const m = dur.match(/P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?/);
+  if (!m) return 1;
+  return (parseInt(m[1]||0)*24) + parseInt(m[2]||0) + parseInt(m[3]||0)/60;
+}
+
+function expandHourly(values, uom) {
+  const h = {};
+  for (const entry of values) {
+    if (entry.value === null) continue;
+    const [ts, dur] = entry.validTime.split('/');
+    const start = new Date(ts);
+    const hrs   = parseDurHrs(dur);
+    let val = entry.value;
+    if (uom === 'wmoUnit:degC'   || uom === 'unit:degC')    val = cToF(val);
+    else if (uom === 'wmoUnit:km_h-1')                       val = kmToM(val);
+    else if (uom === 'wmoUnit:m_s-1')                        val = msToM(val);
+    for (let i = 0; i < hrs; i++) {
+      const key = Math.floor((start.getTime() + i*3600000) / 3600000) * 3600000;
+      if (!(key in h)) h[key] = val;
+    }
+  }
+  return h;
+}
+
+// ===================================================================
+// API CALLS
+// ===================================================================
+async function geocode(q) {
+  const r = await fetch(
+    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&countrycodes=us`,
+    { headers: { 'Accept-Language': 'en', 'User-Agent': 'FairWeatherIndex/1.0' } }
+  );
+  if (!r.ok) throw new Error('Geocoding service unavailable');
+  const d = await r.json();
+  if (!d.length) throw new Error('Location not found within the US');
+  return {
+    lat: parseFloat(d[0].lat),
+    lon: parseFloat(d[0].lon),
+    name: d[0].display_name.split(',').slice(0,3).join(',').trim()
+  };
+}
+
+async function nwsPoints(lat, lon) {
+  const r = await fetch(
+    `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
+    { headers: { 'User-Agent': 'FairWeatherIndex/1.0 (github.com/gtg0116/fairweatherindex)' } }
+  );
+  if (!r.ok) throw new Error('NWS: location outside US forecast coverage');
+  const d = await r.json();
+  return {
+    office: d.properties.gridId,
+    gx: d.properties.gridX,
+    gy: d.properties.gridY
+  };
+}
+
+async function nwsGrid(office, gx, gy) {
+  const r = await fetch(
+    `https://api.weather.gov/gridpoints/${office}/${gx},${gy}`,
+    { headers: { 'User-Agent': 'FairWeatherIndex/1.0 (github.com/gtg0116/fairweatherindex)' } }
+  );
+  if (!r.ok) throw new Error('Failed to download NDFD gridpoint data');
+  return r.json();
+}
+
+// ===================================================================
+// MAIN FLOW
+// ===================================================================
+async function run() {
+  const query = document.getElementById('locInput').value.trim();
+  if (!query) { setStatus('Please enter a location.', 'error'); return; }
+
+  const btn = document.getElementById('goBtn');
+  btn.disabled = true;
+  showOverlay('Geocoding location…');
+  setStatus('');
+  document.getElementById('chartSection').style.display = 'none';
+
+  try {
+    const loc   = await geocode(query);
+    showOverlay('Fetching NWS grid info…');
+    const grid  = await nwsPoints(loc.lat, loc.lon);
+    showOverlay('Downloading NDFD forecast (~7 days)…');
+    const ndfd  = await nwsGrid(grid.office, grid.gx, grid.gy);
+    showOverlay('Calculating Fair Weather Index…');
+    render(ndfd, loc, grid);
+    setStatus(`Showing forecast for: ${loc.name}`, 'info');
+    document.getElementById('chartSection').style.display = 'block';
+  } catch(e) {
+    setStatus(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    hideOverlay();
+  }
+}
+
+function render(ndfd, loc, grid) {
+  const p = ndfd.properties;
+  const get = (key) => {
+    const f = p[key];
+    return f && f.values && f.values.length ? expandHourly(f.values, f.uom) : {};
+  };
+
+  const temp    = get('temperature');
+  const feels   = get('apparentTemperature');
+  const rh      = get('relativeHumidity');
+  const wind    = get('windSpeed');
+  const cloud   = get('skyCover');
+  const precip  = get('probabilityOfPrecipitation');
+
+  // Build 3-hourly slots for next ~7 days
+  const now  = Math.floor(Date.now() / 3600000) * 3600000;
+  const end  = now + 7 * 24 * 3600000;
+  const rows = [];
+
+  for (let t = now; t < end; t += 3 * 3600000) {
+    const date  = new Date(t);
+    const Tnorm = seasonalNormal(loc.lat, date);
+
+    const T_F   = temp[t]   ?? null;
+    const FL_F  = feels[t]  ?? T_F;  // fall back to temperature
+    const RH    = rh[t]     ?? null;
+    const W_mph = wind[t]   ?? null;
+    const Cl    = cloud[t]  ?? null;
+    const Pr    = precip[t] ?? null;
+
+    const sc = {
+      temperature : T_F   !== null ? scoreTemp(T_F,  Tnorm) : null,
+      feelsLike   : FL_F  !== null ? scoreTemp(FL_F, Tnorm) : null,
+      humidity    : RH    !== null ? scoreHumidity(RH)      : null,
+      wind        : W_mph !== null ? scoreWind(W_mph)       : null,
+      cloud       : Cl    !== null ? scoreCloud(Cl)         : null,
+      precip      : Pr    !== null ? scorePrecip(Pr)        : null,
+    };
+    // Map to weight keys
+    const scW = {
+      temperature: sc.temperature,
+      feelsLike  : sc.feelsLike,
+      precip     : sc.precip,
+      wind       : sc.wind,
+      humidity   : sc.humidity,
+      cloud      : sc.cloud,
+    };
+    const fwi = calcFWI(scW);
+
+    rows.push({ t, date, T_F, FL_F, RH, W_mph, Cl, Pr, sc, fwi, Tnorm });
+  }
+
+  buildTable(rows);
+
+  document.getElementById('chartTitle').textContent =
+    `Fair Weather Index  —  ${loc.name}`;
+  document.getElementById('chartMeta').textContent =
+    `NWS Office: ${grid.office}  ·  Grid: ${grid.gx},${grid.gy}  ·  `+
+    `Lat ${loc.lat.toFixed(3)}°  ·  Updated: ${new Date().toLocaleString()}`;
+}
+
+function buildTable(rows) {
+  const tbl = document.getElementById('fwiTable');
+  tbl.innerHTML = '';
+  const thead = tbl.createTHead();
+  const tbody = tbl.createTBody();
+
+  // ---- Header row 1: date spans ----
+  const tr1 = thead.insertRow();
+  const th0 = document.createElement('th');
+  th0.className = 'row-label date-hdr';
+  th0.rowSpan = 2;
+  th0.textContent = 'Parameter';
+  tr1.appendChild(th0);
+
+  let lastDate = null, lastTh = null;
+  const tr2 = thead.insertRow();
+
+  for (const row of rows) {
+    const ds = row.date.toLocaleDateString('en-US',
+      { weekday:'short', month:'short', day:'numeric' });
+    if (ds !== lastDate) {
+      const th = document.createElement('th');
+      th.className = 'date-hdr';
+      th.colSpan = 1;
+      th.textContent = ds;
+      tr1.appendChild(th);
+      lastTh = th; lastDate = ds;
+    } else {
+      lastTh.colSpan++;
+    }
+    // Hour header
+    const th2 = document.createElement('th');
+    const hr  = row.date.getHours();
+    const isNight = hr < 6 || hr >= 20;
+    th2.className = 'hour-hdr' + (isNight ? ' night' : '');
+    th2.textContent = hr === 0 ? '12a' : hr < 12 ? hr+'a' : hr === 12 ? '12p' : (hr-12)+'p';
+    tr2.appendChild(th2);
+  }
+
+  // ---- Data row definitions ----
+  const ROW_DEFS = [
+    { key: 'fwi',    label: 'Fair Weather Index', fwi: true },
+    { key: 'feelsLike',   label: 'Feels Like',     fmt: v => Math.round(v)+'°F' },
+    { key: 'temperature', label: 'Temperature',    fmt: v => Math.round(v)+'°F' },
+    { key: 'precip',      label: 'Precip Chance',  fmt: v => Math.round(v)+'%'  },
+    { key: 'wind',        label: 'Wind Speed',     fmt: v => Math.round(v)+' mph'},
+    { key: 'humidity',    label: 'Humidity',       fmt: v => Math.round(v)+'%'  },
+    { key: 'cloud',       label: 'Cloud Cover',    fmt: v => Math.round(v)+'%'  },
+  ];
+  const RAW_KEYS = {
+    feelsLike:'FL_F', temperature:'T_F', precip:'Pr', wind:'W_mph', humidity:'RH', cloud:'Cl'
+  };
+
+  // Tooltip data cache keyed by col index
+  const tipData = rows.map(r => r);
+
+  for (const def of ROW_DEFS) {
+    const tr = tbody.insertRow();
+    const lbl = document.createElement('td');
+    lbl.className = 'row-label';
+    lbl.textContent = def.label;
+    tr.appendChild(lbl);
+
+    rows.forEach((row, ci) => {
+      const td = document.createElement('td');
+      let cls, txt;
+
+      if (def.fwi) {
+        const cat = fwiCat(row.fwi);
+        cls = 'cell fwi-cell ' + cat.cls;
+        txt = cat.lbl;
+      } else {
+        const sc  = def.key === 'feelsLike' ? row.sc.feelsLike
+                  : def.key === 'temperature' ? row.sc.temperature
+                  : row.sc[def.key];
+        const raw = row[RAW_KEYS[def.key]];
+        cls = 'cell ' + scoreCls(sc);
+        txt = raw !== null && raw !== undefined ? def.fmt(raw) : '—';
+      }
+
+      td.className = cls;
+      td.textContent = txt;
+
+      // Tooltip events
+      td.addEventListener('mouseenter', e => showTip(e, tipData[ci]));
+      td.addEventListener('mousemove',  e => moveTip(e));
+      td.addEventListener('mouseleave', hideTip);
+
+      tr.appendChild(td);
+    });
+  }
+}
+
+// ===================================================================
+// TOOLTIP
+// ===================================================================
+const tip = document.getElementById('tip');
+
+function showTip(e, row) {
+  const f1 = v => v !== null && v !== undefined ? Math.round(v) : '—';
+  const cat = fwiCat(row.fwi);
+  const dtStr = row.date.toLocaleString('en-US',
+    { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+
+  tip.innerHTML = `
+    <div class="tip-title">${dtStr}</div>
+    <div class="tip-row"><span class="tip-lbl">Fair Weather</span><span class="tip-val">${cat.lbl}</span></div>
+    <div class="tip-row"><span class="tip-lbl">Feels Like</span>  <span class="tip-val">${f1(row.FL_F)}°F (norm ${Math.round(row.Tnorm)}°F)</span></div>
+    <div class="tip-row"><span class="tip-lbl">Temperature</span> <span class="tip-val">${f1(row.T_F)}°F</span></div>
+    <div class="tip-row"><span class="tip-lbl">Precip Chance</span><span class="tip-val">${f1(row.Pr)}%</span></div>
+    <div class="tip-row"><span class="tip-lbl">Wind Speed</span>  <span class="tip-val">${f1(row.W_mph)} mph</span></div>
+    <div class="tip-row"><span class="tip-lbl">Humidity</span>    <span class="tip-val">${f1(row.RH)}%</span></div>
+    <div class="tip-row"><span class="tip-lbl">Cloud Cover</span> <span class="tip-val">${f1(row.Cl)}%</span></div>
+  `;
+  moveTip(e);
+  tip.style.display = 'block';
+}
+
+function moveTip(e) {
+  const x = e.clientX + 14, y = e.clientY + 14;
+  tip.style.left = Math.min(x, window.innerWidth  - 240) + 'px';
+  tip.style.top  = Math.min(y, window.innerHeight - 220) + 'px';
+}
+
+function hideTip() { tip.style.display = 'none'; }
+
+// ===================================================================
+// UI HELPERS
+// ===================================================================
+function setStatus(msg, type='') {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status' + (type ? ' '+type : '');
+}
+function showOverlay(txt) {
+  document.getElementById('overlayTxt').textContent = txt;
+  document.getElementById('overlay').classList.add('on');
+}
+function hideOverlay() {
+  document.getElementById('overlay').classList.remove('on');
+}
+
+document.getElementById('locInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') run();
+});
+</script>
+</body>
+</html>
